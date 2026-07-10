@@ -1,0 +1,36 @@
+# === 敏感信息(绝不入库)===
+# 真实密钥、代理凭证
+.env
+# 真实账号 session cookie
+accounts.json
+# 其他账号文件
+accounts*.json
+# 抓包文件可能含 cookie/token
+*.har
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+ENV/
+
+# === 测试/调试脚本(临时,不入库)===
+inspect_login.py
+replay_login.py
+
+# === IDE / 编辑器 ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === 操作系统 ===
+.DS_Store
+Thumbs.db
