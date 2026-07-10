@@ -8,7 +8,7 @@
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 <a href="https://linux.do"><img src="https://img.shields.io/badge/LINUX%20DO-社区-f0b752?style=flat-square" alt="LINUX DO"></a>
 
-ClaudeX 是一个用于自动化通过 MoeMail 临时邮箱服务创建 Claude 账号记录，并批量检查已保存账号的会话状态、套餐和模型限制信息。
+ClaudeX 是一个用于自动化创建 Claude 账号，并保存账号的会话状态等数据的Cli工具
 
 > 注意：本项目会请求 `claude.ai` 。请确认你的使用方式符合相关服务条款、当地法律法规要求。
 
