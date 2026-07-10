@@ -6,6 +6,7 @@
 ![JSON](https://img.shields.io/badge/Data-JSON-000000?style=flat-square&logo=json&logoColor=white)
 ![Environment](https://img.shields.io/badge/Config-.env-4B5563?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+<a href="https://linux.do"><img src="https://img.shields.io/badge/LINUX%20DO-社区-f0b752?style=flat-square" alt="LINUX DO"></a>
 
 ClaudeX 是一个用于自动化通过 MoeMail 临时邮箱服务创建 Claude 账号记录，并批量检查已保存账号的会话状态、套餐和模型限制信息。
 
