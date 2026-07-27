@@ -1,31 +1,18 @@
 import time
 import requests
 from requests.exceptions import SSLError, ConnectionError as ConnError
-from .config import MOEMAIL_API_KEY, MOEMAIL_BASE_URL
+from core.config import MOEMAIL_API_KEY, MOEMAIL_BASE_URL
 
 _MAX_RETRIES = 4
 
 
-def _get(s, url, **kwargs):
+def _request(s, method, url, **kwargs):
     for attempt in range(_MAX_RETRIES):
         try:
-            r = s.get(url, timeout=15, **kwargs)
+            r = getattr(s, method)(url, timeout=15, **kwargs)
             r.raise_for_status()
             return r.json()
-        except (SSLError, ConnError) as e:
-            if attempt < _MAX_RETRIES - 1:
-                time.sleep(1 * (attempt + 1))
-                continue
-            raise
-
-
-def _post(s, url, **kwargs):
-    for attempt in range(_MAX_RETRIES):
-        try:
-            r = s.post(url, timeout=15, **kwargs)
-            r.raise_for_status()
-            return r.json()
-        except (SSLError, ConnError) as e:
+        except (SSLError, ConnError):
             if attempt < _MAX_RETRIES - 1:
                 time.sleep(1 * (attempt + 1))
                 continue
@@ -41,18 +28,24 @@ class MoeMailClient:
         self.s.headers.update({"X-API-Key": api_key})
 
     def get_config(self):
-        return _get(self.s, f"{self.base}/api/config")
+        return _request(self.s, "get", f"{self.base}/api/config")
 
     def generate_email(self, name="test", expiry_time=3600000, domain="moemail.app"):
         payload = {"name": name, "expiryTime": expiry_time, "domain": domain}
-        return _post(self.s, f"{self.base}/api/emails/generate", json=payload)
+        return _request(
+            self.s, "post", f"{self.base}/api/emails/generate", json=payload
+        )
 
     def list_messages(self, email_id, cursor=None):
         params = {"cursor": cursor} if cursor else {}
-        return _get(self.s, f"{self.base}/api/emails/{email_id}", params=params)
+        return _request(
+            self.s, "get", f"{self.base}/api/emails/{email_id}", params=params
+        )
 
     def get_message(self, email_id, message_id):
-        return _get(self.s, f"{self.base}/api/emails/{email_id}/{message_id}")
+        return _request(
+            self.s, "get", f"{self.base}/api/emails/{email_id}/{message_id}"
+        )
 
     def wait_for_message(self, email_id, sender_contains=None, timeout=120, interval=3):
         deadline = time.time() + timeout

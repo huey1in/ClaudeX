@@ -1,6 +1,9 @@
 import json
 import os
+import tempfile
 from threading import Lock
+
+from core.console import print_log
 
 # 按文件路径分配锁，保证多线程并发写入同一账号文件时不冲突
 _locks = {}
@@ -35,6 +38,48 @@ def save_account(account, filepath="accounts.json"):
             json.dump(records, f, ensure_ascii=False, indent=2)
 
 
+def _reject_payment_secrets(value):
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            if str(key).lower() in {"iban", "client_secret"}:
+                raise ValueError("拒绝持久化敏感付款字段")
+            _reject_payment_secrets(nested)
+    elif isinstance(value, (list, tuple)):
+        for nested in value:
+            _reject_payment_secrets(nested)
+
+
+def update_account(filepath, account_uuid, updates):
+    """按账号 UUID 原子更新记录，并拒绝持久化付款敏感字段。"""
+    _reject_payment_secrets(updates)
+    lock = _get_lock(filepath)
+    with lock:
+        records = load_accounts(filepath)
+        matched = None
+        for record in records:
+            if record.get("uuid") == account_uuid:
+                record.update(updates)
+                matched = record
+                break
+        if matched is None:
+            raise KeyError(account_uuid)
+
+        directory = os.path.dirname(os.path.abspath(filepath))
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", dir=directory, delete=False
+            ) as temp_file:
+                json.dump(records, temp_file, ensure_ascii=False, indent=2)
+                temp_file.write("\n")
+                temp_path = temp_file.name
+            os.replace(temp_path, filepath)
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.unlink(temp_path)
+        return matched
+
+
 class AccountPool:
     """账号池：从账号文件加载记录，按轮询顺序取用（线程安全）。"""
 
@@ -50,7 +95,7 @@ class AccountPool:
         self.accounts = load_accounts(self._filepath)
         if not self.accounts:
             raise RuntimeError(f"{self._filepath} 为空，请先运行 register")
-        print(f"[pool] 已加载 {len(self.accounts)} 个账号")
+        print_log(f"[pool] 已加载 {len(self.accounts)} 个账号")
 
     def next(self):
         """按轮询顺序返回下一个账号。"""

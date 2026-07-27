@@ -3,8 +3,10 @@ from requests.exceptions import SSLError, HTTPError
 
 import requests
 
-from .accounts import load_accounts
-from .config import ACCOUNTS_FILE, BASE_URL, build_headers
+from core.config import ACCOUNTS_FILE, BASE_URL, build_headers
+from core.console import print_log
+
+from .storage import load_accounts
 
 
 def _make_direct_session(cookies=None, seed=None):
@@ -75,10 +77,10 @@ def check_usage(accounts_file=ACCOUNTS_FILE):
     """查询并打印账号文件中所有账号的用量状态。"""
     accounts = load_accounts(accounts_file)
     if not accounts:
-        print("未找到账号，请先运行: python main.py register")
+        print_log("未找到账号，请先运行: python main.py register")
         return
 
-    print(f"共找到 {len(accounts)} 个账号\n")
+    print_log(f"共找到 {len(accounts)} 个账号\n")
 
     stats = {"ok": 0, "expired": 0, "error": 0}
 
@@ -87,7 +89,7 @@ def check_usage(accounts_file=ACCOUNTS_FILE):
         org_uuid = record.get("org_uuid", "")
         cookies  = record.get("cookies", {})
 
-        print(f"[{i}/{len(accounts)}] {email}")
+        print_log(f"[{i}/{len(accounts)}] {email}")
         try:
             s    = _make_direct_session(cookies, seed=email)
             acct = _fetch_account(s)
@@ -105,32 +107,35 @@ def check_usage(accounts_file=ACCOUNTS_FILE):
             status      = "active" if chat_status == "available" else chat_status
             icon        = "[OK]" if status == "active" else "[ERR]"
 
-            print(f"  {icon} 状态: {status}  套餐: {plan}")
+            print_log(f"  {icon} 状态: {status}  套餐: {plan}")
             for m in limits[:3]:  # 仅显示前 3 个模型
                 limit_str = f"{m['hard_limit']:,}" if m["hard_limit"] else "unlimited"
-                print(f"    {m['model']:<34} {limit_str}")
+                print_log(f"    {m['model']:<34} {limit_str}")
             if len(limits) > 3:
-                print(f"    ... (共 {len(limits)} 个模型)")
+                print_log(f"    ... (共 {len(limits)} 个模型)")
             stats["ok"] += 1
 
         except HTTPError as e:
             code = getattr(e.response, 'status_code', 0)
             if code in (401, 403):
-                print(f"  [EXPIRED] 会话已失效 ({code})")
+                print_log(f"  [EXPIRED] 会话已失效 ({code})")
                 stats["expired"] += 1
             else:
-                print(f"  [ERR] HTTP {code}")
+                print_log(f"  [ERR] HTTP {code}")
                 stats["error"] += 1
         except Exception as e:
             err_msg = str(e)
             if "SSLEOFError" in err_msg or "SSL" in err_msg:
-                print("  [ERR] SSL 连接失败（代理问题）")
+                print_log("  [ERR] SSL 连接失败（代理问题）")
             else:
-                print(f"  [ERR] {err_msg[:80]}")
+                print_log(f"  [ERR] {err_msg[:80]}")
             stats["error"] += 1
 
-        print()
+        print_log()
 
-    print(f"汇总: {stats['ok']} 正常, {stats['expired']} 失效, {stats['error']} 错误")
+    print_log(
+        f"汇总: {stats['ok']} 正常, {stats['expired']} 失效, "
+        f"{stats['error']} 错误"
+    )
     if stats["expired"] > 0:
-        print("\n提示: 失效账号需重新登录，运行: python main.py register")
+        print_log("\n提示: 失效账号需重新登录，运行: python main.py register")

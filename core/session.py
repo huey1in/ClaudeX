@@ -1,5 +1,5 @@
 import requests
-from .config import build_headers, PROXIES
+from .config import PROXIES, build_headers
 
 
 def make_session(cookies=None, seed=None):

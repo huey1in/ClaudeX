@@ -7,9 +7,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from requests.exceptions import SSLError, ConnectionError as ReqConnError
+from requests.utils import dict_from_cookiejar
 
-from .accounts import save_account
-from .config import ACCOUNTS_FILE, BASE_URL, build_headers, PROXIES
+from account.storage import save_account
+from core.config import ACCOUNTS_FILE, BASE_URL, PROXIES, build_headers
+from core.console import print_log
+
 from .moemail import MoeMailClient
 
 # 常见美国人名/姓氏，用于生成邮箱前缀
@@ -96,9 +99,9 @@ def _req(s, method, url, max_retries=_MAX_RETRIES, **kwargs):
 
             if r.status_code == 429:
                 wait = 3 * (attempt + 1)
-                print(f"    [重试 {attempt+1}/{max_retries}] HTTP 429，等待 {wait}s…")
+                print_log(f"    [重试 {attempt+1}/{max_retries}] HTTP 429，等待 {wait}s…")
                 time.sleep(wait)
-                last_err = Exception(f"HTTP 429")
+                last_err = Exception("HTTP 429")
                 continue
 
             if r.status_code not in (200, 201, 204):
@@ -120,7 +123,10 @@ def _req(s, method, url, max_retries=_MAX_RETRIES, **kwargs):
         except (SSLError, ReqConnError) as e:
             last_err = e
             wait = 2 ** attempt
-            print(f"    [重试 {attempt+1}/{max_retries}] {type(e).__name__}，等待 {wait}s…")
+            print_log(
+                f"    [重试 {attempt+1}/{max_retries}] "
+                f"{type(e).__name__}，等待 {wait}s…"
+            )
             time.sleep(wait)
         except Exception:
             raise
@@ -152,6 +158,11 @@ def _verify_magic_link(s, email, nonce, encoded_email=None):
     return _req(s, "post", f"{BASE_URL}/api/auth/verify_magic_link", data=json.dumps(body))
 
 
+def _serialize_cookies(cookie_jar):
+    """遍历 Cookie 条目，避免同名但不同域的 Cookie 触发冲突。"""
+    return dict_from_cookiejar(cookie_jar)
+
+
 def _extract_nonce(text):
     m = re.search(r'/magic-link#([0-9a-fA-F]+):([A-Za-z0-9+/=]+)', text)
     if m:
@@ -163,55 +174,55 @@ def _extract_nonce(text):
 def register_account(accounts_file=ACCOUNTS_FILE):
     """注册单个账号，成功后追加到 accounts_file 并返回记录 dict。"""
     # ── 步骤 1/7：检查出口 IP ────────────────────────────────────────────
-    print("  [1/7] 检查出口 IP…")
+    print_log("  [1/7] 检查出口 IP…")
     ip = _get_exit_ip()
-    print(f"        出口 IP: {ip}")
+    print_log(f"        出口 IP: {ip}")
 
     # ── 步骤 2/7：查询 moemail 可用域名 ──────────────────────────────────
-    print("  [2/7] 查询 moemail 可用域名…")
+    print_log("  [2/7] 查询 moemail 可用域名…")
     mail = MoeMailClient()
     cfg = mail.get_config()
     raw = cfg.get("emailDomains") or cfg.get("domains") or "moemail.app"
     domains = [x.strip() for x in raw.split(",")] if isinstance(raw, str) else raw
     domain = random.choice(domains)  # 随机选用，分散到不同域名
-    print(f"        可用域名: {domains}")
-    print(f"        选用域名: {domain}")
+    print_log(f"        可用域名: {domains}")
+    print_log(f"        选用域名: {domain}")
 
     # ── 步骤 3/7：生成临时邮箱 ───────────────────────────────────────────
-    print("  [3/7] 生成临时邮箱…")
+    print_log("  [3/7] 生成临时邮箱…")
     name = _random_name()
     box = mail.generate_email(name=name, expiry_time=3600000, domain=domain)
     email = box["email"]
     email_id = box["id"]
-    print(f"        邮箱: {email}")
-    print(f"        邮箱 ID: {email_id}")
+    print_log(f"        邮箱: {email}")
+    print_log(f"        邮箱 ID: {email_id}")
 
     s = _bare_session(seed=email)
 
     # ── 步骤 4/7：查询登录方式 ───────────────────────────────────────────
-    print("  [4/7] 查询 claude.ai 登录方式…")
+    print_log("  [4/7] 查询 claude.ai 登录方式…")
     methods = _get_login_methods(s, email)
-    print(f"        可用方式: {methods.get('methods', methods)}")
+    print_log(f"        可用方式: {methods.get('methods', methods)}")
 
     # ── 步骤 5/7：发送 magic link ────────────────────────────────────────
-    print("  [5/7] 发送 magic link 邮件…")
+    print_log("  [5/7] 发送 magic link 邮件…")
     time.sleep(1)
     _send_magic_link(s, email)
-    print("        已发送，等待邮件到达…")
+    print_log("        已发送，等待邮件到达…")
 
     # ── 步骤 6/7：等待邮件并提取 nonce ───────────────────────────────────
-    print("  [6/7] 轮询邮箱，等待 Anthropic 验证邮件…")
+    print_log("  [6/7] 轮询邮箱，等待 Anthropic 验证邮件…")
     msg = mail.wait_for_message(email_id, sender_contains="anthropic",
                                 timeout=120, interval=3)
-    print("        收到验证邮件，提取 nonce…")
+    print_log("        收到验证邮件，提取 nonce…")
     nonce, enc_email = _extract_nonce(json.dumps(msg, ensure_ascii=False))
     if not nonce:
         raise RuntimeError("未能从邮件中提取 nonce")
-    print(f"        nonce: {nonce}")
-    print(f"        encoded_email: {enc_email}")
+    print_log(f"        nonce: {nonce}")
+    print_log(f"        encoded_email: {enc_email}")
 
     # ── 步骤 7/7：换取会话并保存 ─────────────────────────────────────────
-    print("  [7/7] 用 nonce 换取登录会话…")
+    print_log("  [7/7] 用 nonce 换取登录会话…")
     data = _verify_magic_link(s, email, nonce, encoded_email=enc_email)
     acct = data.get("account", {})
     mems = acct.get("memberships", [])
@@ -223,36 +234,41 @@ def register_account(accounts_file=ACCOUNTS_FILE):
         "email_address": acct.get("email_address") or acct.get("email"),
         "org_uuid": org.get("uuid"),
         "org_name": org.get("name"),
-        "cookies": dict(s.cookies),
+        "cookies": _serialize_cookies(s.cookies),
         "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
-    print(f"        账号 UUID: {record['uuid']}")
-    print(f"        组织: {record['org_name']}")
-    print(f"        会话 Cookie: {list(record['cookies'].keys())}")
+    print_log(f"        账号 UUID: {record['uuid']}")
+    print_log(f"        组织: {record['org_name']}")
+    print_log(f"        会话 Cookie: {list(record['cookies'].keys())}")
 
     save_account(record, accounts_file)
-    print(f"        已保存到 {accounts_file}")
-    print(f"  [成功] 注册完成: {email}")
+    print_log(f"        已保存到 {accounts_file}")
+    print_log(f"  [成功] 注册完成: {email}")
     return record
 
 
-def register_batch(count, concurrent=1, accounts_file=ACCOUNTS_FILE):
+def register_batch(count, concurrent=1, accounts_file=ACCOUNTS_FILE,
+                   on_success=None):
     """批量注册账号。"""
     results = []
     failed = 0
 
     if concurrent <= 1:
         for i in range(count):
-            print(f"\n[{i+1}/{count}] 注册中…")
+            print_log(f"\n[{i+1}/{count}] 注册中…")
             try:
-                results.append(register_account(accounts_file))
+                account = register_account(accounts_file)
             except Exception as e:
                 failed += 1
-                print(f"  [失败] {e}")
+                print_log(f"  [失败] {e}")
+            else:
+                results.append(account)
+                if on_success:
+                    on_success(account)
             time.sleep(1)
     else:
         def _task(idx):
-            print(f"\n[{idx}/{count}] 注册中…")
+            print_log(f"\n[{idx}/{count}] 注册中…")
             return register_account(accounts_file)
 
         with ThreadPoolExecutor(max_workers=concurrent) as pool:
@@ -260,10 +276,14 @@ def register_batch(count, concurrent=1, accounts_file=ACCOUNTS_FILE):
             for fut in as_completed(futures):
                 idx = futures[fut]
                 try:
-                    results.append(fut.result())
+                    account = fut.result()
                 except Exception as e:
                     failed += 1
-                    print(f"[{idx}/{count}] 失败: {e}")
+                    print_log(f"[{idx}/{count}] 失败: {e}")
+                else:
+                    results.append(account)
+                    if on_success:
+                        on_success(account)
 
-    print(f"\n[注册] 完成: 成功 {len(results)} 个，失败 {failed} 个")
+    print_log(f"\n[注册] 完成: 成功 {len(results)} 个，失败 {failed} 个")
     return results
