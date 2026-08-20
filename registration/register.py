@@ -10,10 +10,11 @@ from requests.exceptions import SSLError, ConnectionError as ReqConnError
 from requests.utils import dict_from_cookiejar
 
 from account.storage import save_account
-from core.config import ACCOUNTS_FILE, BASE_URL, PROXIES, build_headers
+from core.config import ACCOUNTS_FILE, BASE_URL, EMAIL_SERVICE, PROXIES, build_headers
 from core.console import print_log
 
 from .moemail import MoeMailClient
+from .mailnest import MailNestClient
 
 # 常见美国人名/姓氏，用于生成邮箱前缀
 _FIRST_NAMES = [
@@ -41,6 +42,14 @@ def _random_name() -> str:
     num = random.choice(["", str(random.randint(1, 99)),
                          str(random.randint(1970, 2005))])
     return f"{first}{sep}{last}{num}"
+
+
+def _mail_client():
+    if EMAIL_SERVICE == "moemail":
+        return MoeMailClient()
+    if EMAIL_SERVICE == "mailnest":
+        return MailNestClient()
+    raise RuntimeError(f"Unsupported EMAIL_SERVICE: {EMAIL_SERVICE}")
 
 
 def _bare_session(seed=None):
@@ -178,15 +187,17 @@ def register_account(accounts_file=ACCOUNTS_FILE):
     ip = _get_exit_ip()
     print_log(f"        出口 IP: {ip}")
 
-    # ── 步骤 2/7：查询 moemail 可用域名 ──────────────────────────────────
-    print_log("  [2/7] 查询 moemail 可用域名…")
-    mail = MoeMailClient()
+    # ── 步骤 2/7：查询临时邮箱服务配置 ──────────────────────────────────
+    print_log(f"  [2/7] 查询临时邮箱服务配置 ({EMAIL_SERVICE})…")
+    mail = _mail_client()
     cfg = mail.get_config()
     raw = cfg.get("emailDomains") or cfg.get("domains") or "moemail.app"
     domains = [x.strip() for x in raw.split(",")] if isinstance(raw, str) else raw
-    domain = random.choice(domains)  # 随机选用，分散到不同域名
+    domain = random.choice(domains) if domains else None
     print_log(f"        可用域名: {domains}")
-    print_log(f"        选用域名: {domain}")
+    if cfg.get("projects"):
+        print_log(f"        可用项目: {[p.get('code') for p in cfg['projects']]}")
+    print_log(f"        选用域名: {domain or 'service-managed'}")
 
     # ── 步骤 3/7：生成临时邮箱 ───────────────────────────────────────────
     print_log("  [3/7] 生成临时邮箱…")
