@@ -16,7 +16,7 @@ ClaudeX 是一个用于批量注册 Claude 账号、保存会话状态并查询�
 
 ## 功能
 
-- 批量注册账号：生成域名邮箱、发送 Claude magic link、读取验证邮件、换取会话 Cookie。
+- 批量注册账号：通过 MoeMail 或 MailNest 获取临时邮箱、发送 Claude magic link、读取验证邮件、换取会话 Cookie。
 - 并发执行注册：通过 `-j/--concurrent` 控制并发数量。
 - 保存账号记录：默认写入 `accounts.json`。
 - 批量检查账号：读取账号 Cookie，查询账号状态、套餐和模型限制。
@@ -52,6 +52,7 @@ python main.py --version
 │   ├── storage.py          # 账号文件读写与账号池
 │   └── check.py            # 账号状态和用量检查
 ├── registration/           # 账号注册
+│   ├── mailnest.py         # MailNest API 客户端
 │   ├── moemail.py          # MoeMail API 客户端
 │   └── register.py         # 注册流程
 ├── billing/                # Claude 和 Stripe 订阅工作流
@@ -61,8 +62,8 @@ python main.py --version
 ## 环境要求
 
 - Python 3.9+
-- 可访问的 MoeMail 服务
-- MoeMail API Key
+- 可访问的临时邮箱服务：MoeMail 或 MailNest
+- 对应服务的 API Key
 
 安装依赖：
 
@@ -84,19 +85,33 @@ Windows PowerShell 可以使用：
 Copy-Item .env.example .env
 ```
 
-至少需要配置：
+至少需要配置一个临时邮箱服务。使用 MoeMail：
 
 ```env
+EMAIL_SERVICE=moemail
 MOEMAIL_API_KEY=mk_your_api_key_here
 MOEMAIL_BASE_URL=https://your-moemail-instance.example.com
+```
+
+使用 MailNest：
+
+```env
+EMAIL_SERVICE=mailnest
+MAILNEST_API_KEY=sk_your_mailnest_api_key_here
+MAILNEST_BASE_URL=https://mailnest.top
+MAILNEST_PROJECT_CODE=Claude0001
 ```
 
 常用配置项：
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
+| `EMAIL_SERVICE` | `moemail` | 临时邮箱服务，可选 `moemail` 或 `mailnest` |
 | `MOEMAIL_API_KEY` | 空 | MoeMail API Key |
 | `MOEMAIL_BASE_URL` | 空 | MoeMail 服务地址 |
+| `MAILNEST_API_KEY` | 空 | MailNest API Key |
+| `MAILNEST_BASE_URL` | `https://mailnest.top` | MailNest 服务地址 |
+| `MAILNEST_PROJECT_CODE` | `Claude0001` | MailNest 临时邮箱项目编码 |
 | `PROXY` | 空 | 注册请求使用的代理，例如 `socks5h://user:pass@host:port` |
 | `REGISTER_COUNT` | `1` | 默认注册数量 |
 | `REGISTER_CONCURRENT` | `1` | 默认并发数量 |
@@ -182,8 +197,8 @@ python main.py --accounts data/accounts.json check
 注册流程位于 `registration/register.py`：
 
 1. 检查当前出口 IP。
-2. 从 MoeMail 获取可用邮箱域名。
-3. 创建临时邮箱。
+2. 按 `EMAIL_SERVICE` 初始化 MoeMail 或 MailNest 客户端。
+3. 创建或购买临时邮箱。
 4. 查询 Claude 登录方式。
 5. 发送 magic link。
 6. 轮询临时邮箱并提取 nonce。
@@ -219,7 +234,7 @@ python -m ruff check main.py core account registration billing tests
 建议在修改网络请求逻辑后，至少验证：
 
 - `.env` 能正确加载。
-- MoeMail 配置接口可用。
+- 所选临时邮箱服务配置接口可用，且 API Key 有效。
 - 注册失败时不会破坏已有 `accounts.json`。
 - `check` 能正确识别正常、过期和错误账号。
 

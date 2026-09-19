@@ -20,6 +20,7 @@ class ProjectLayoutTests(unittest.TestCase):
             "core/session.py",
             "core/version.py",
             "registration/__init__.py",
+            "registration/mailnest.py",
             "registration/moemail.py",
             "registration/register.py",
             "version.json",

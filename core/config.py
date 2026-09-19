@@ -20,6 +20,10 @@ load_env()
 
 MOEMAIL_API_KEY  = os.environ.get("MOEMAIL_API_KEY", "")
 MOEMAIL_BASE_URL = os.environ.get("MOEMAIL_BASE_URL", "")
+EMAIL_SERVICE = os.environ.get("EMAIL_SERVICE", "moemail").strip().lower()
+MAILNEST_API_KEY = os.environ.get("MAILNEST_API_KEY", "")
+MAILNEST_BASE_URL = os.environ.get("MAILNEST_BASE_URL", "https://mailnest.top")
+MAILNEST_PROJECT_CODE = os.environ.get("MAILNEST_PROJECT_CODE", "Claude0001")
 
 PROXY   = os.environ.get("PROXY", "")
 PROXIES = {"http": PROXY, "https": PROXY} if PROXY else None
